@@ -43,28 +43,45 @@ def _init_logger(log_level=logging.INFO, log_format=None):
     LOG.debug("logging initialized")
 
 
+def _find_ini_file(target):
+    """Tries to find a working ini file
+
+    Parses target directories to find a filename matching `.bandit*`.
+    If nothing is found, looks for a standard ini file
+    with a `[bandit]` section
+
+    :return: the filename as a string or `None` if no ini file found
+    """
+    bandit_files = []
+
+    for t in target:
+        for root, _, filenames in os.walk(t):
+            for filename in fnmatch.filter(filenames, '.bandit'):
+                bandit_files.append(os.path.join(root, filename))
+
+    if len(bandit_files) > 1:
+        LOG.error('Multiple .bandit files found - scan separately or '
+                  'choose one with --ini\n\t%s', ', '.join(bandit_files))
+        sys.exit(2)
+    elif len(bandit_files) == 1:
+        LOG.info('Found project level .bandit file: %s', bandit_files[0])
+        return bandit_files[0]
+
+    # No .bandit* file found, let's try standard files in current directory
+    for filename in ["setup.cfg", "tox.ini"]:
+        filename = os.path.join('.', filename)
+        if os.path.isfile(filename) and utils.parse_ini_file(filename):
+            return filename
+
+    return None
+
+
 def _get_options_from_ini(ini_path, target):
     """Return a dictionary of config options or None if we can't load any."""
-    ini_file = None
-
     if ini_path:
         ini_file = ini_path
     else:
-        bandit_files = []
-
-        for t in target:
-            for root, _, filenames in os.walk(t):
-                for filename in fnmatch.filter(filenames, '.bandit'):
-                    bandit_files.append(os.path.join(root, filename))
-
-        if len(bandit_files) > 1:
-            LOG.error('Multiple .bandit files found - scan separately or '
-                      'choose one with --ini\n\t%s', ', '.join(bandit_files))
-            sys.exit(2)
-
-        elif len(bandit_files) == 1:
-            ini_file = bandit_files[0]
-            LOG.info('Found project level .bandit file: %s', bandit_files[0])
+        ini_file = _find_ini_file(target)
 
     if ini_file:
         return utils.parse_ini_file(ini_file)
@@ -142,7 +159,8 @@ def main():
     )
     parser.add_argument(
         '-r', '--recursive', dest='recursive',
-        action='store_true', help='find and process files in subdirectories'
+        action='store_const', const=True,
+        help='find and process files in subdirectories'
     )
     parser.add_argument(
         '-a', '--aggregate', dest='agg_type',
@@ -237,7 +255,7 @@ def main():
     )
     parser.add_argument(
         '--ini', dest='ini_path', action='store', default=None,
-        help='path to a .bandit file that supplies command line arguments'
+        help='path to an ini file that supplies command line arguments'
     )
     parser.add_argument('--exit-zero', action='store_true', dest='exit_zero',
                         default=False, help='exit with 0, '
@@ -334,10 +352,10 @@ def main():
 
         # TODO(tmcpeak): any other useful options to pass from .bandit?
 
-        args.recursive = _log_option_source(
-            args.recursive,
-            ini_options.get('recursive'),
-            'recursive scan')
+        ini_recursive = ini_options.get('recursive')
+        if ini_recursive and args.recursive is None:
+            # In this case, the ini file provides the intended config
+            args.recursive = ini_recursive
 
         args.agg_type = _log_option_source(
             args.agg_type,
@@ -404,9 +422,10 @@ def main():
             ini_options.get('baseline'),
             'path of a baseline report')
 
+    # If no target has been set through args or ini file, then use a default
     if not args.targets:
-        LOG.error("No targets found in CLI or ini files, exiting.")
-        sys.exit(2)
+        args.targets = '.'
+
     # if the log format string was set in the options, reinitialize
     if b_conf.get_option('log_format'):
         log_format = b_conf.get_option('log_format')

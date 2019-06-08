@@ -151,7 +151,7 @@ Usage::
       -b BASELINE, --baseline BASELINE
                             path of a baseline report to compare against (only
                             JSON-formatted files are accepted)
-      --ini INI_PATH        path to a .bandit file that supplies command line
+      --ini INI_PATH        path to an ini file that supplies command line
                             arguments
       --exit-zero           exit with 0, even with results found
       --version             show program's version number and exit

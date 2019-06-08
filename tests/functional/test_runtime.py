@@ -28,11 +28,6 @@ class RuntimeTests(testtools.TestCase):
             cmdlist.append(os.path.join(os.getcwd(), 'examples', t))
         return self._test_runtime(cmdlist)
 
-    def test_no_arguments(self):
-        (retcode, output) = self._test_runtime(['bandit', ])
-        self.assertEqual(2, retcode)
-        self.assertIn("No targets found in CLI or ini files", output)
-
     def test_piped_input(self):
         with open('examples/imports.py', 'r') as infile:
             (retcode, output) = self._test_runtime(['bandit', '-'], infile)
@@ -92,7 +87,8 @@ class RuntimeTests(testtools.TestCase):
         self.assertIn("No issues identified.", output)
 
     def test_recurse(self):
-        (retcode, output) = self._test_runtime(['bandit', '-r', 'examples/recursive1'])
+        (retcode, output) = self._test_runtime(['bandit', '-r',
+                                                'examples/recursive1'])
         self.assertEqual(0, retcode)
         self.assertIn("Total lines of code: 2", output)
         self.assertIn("Files skipped (0):", output)
