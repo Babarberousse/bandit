@@ -131,19 +131,7 @@ def _log_info(args, profile):
     LOG.info("cli exclude tests: %s", args.skips)
 
 
-def main():
-    # bring our logging stuff up as early as possible
-    debug = (logging.DEBUG if '-d' in sys.argv or '--debug' in sys.argv else
-             logging.INFO)
-    _init_logger(debug)
-    extension_mgr = _init_extensions()
-
-    baseline_formatters = [f.name for f in filter(lambda x:
-                                                  hasattr(x.plugin,
-                                                          '_accepts_baseline'),
-                                                  extension_mgr.formatters)]
-
-    # now do normal startup
+def _get_parser(extension_mgr):
     parser = argparse.ArgumentParser(
         description='Bandit - a Python source code security analyzer',
         formatter_class=argparse.RawDescriptionHelpFormatter
@@ -260,7 +248,6 @@ def main():
     parser.set_defaults(verbose=False)
     parser.set_defaults(quiet=False)
     parser.set_defaults(ignore_nosec=False)
-
     plugin_info = ["%s\t%s" % (a[0], a[1].name) for a in
                    extension_mgr.plugins_by_id.items()]
     blacklist_info = []
@@ -299,18 +286,10 @@ def main():
     ''')
     parser.epilog = dedent_text + "\t{0}".format(plugin_list)
 
-    # setup work - parse arguments, and initialize BanditManager
-    args = parser.parse_args()
-    # Check if `--msg-template` is not present without custom formatter
-    if args.output_format != 'custom' and args.msg_template is not None:
-        parser.error("--msg-template can only be used with --format=custom")
+    return parser
 
-    try:
-        b_conf = b_config.BanditConfig(config_file=args.config_file)
-    except utils.ConfigError as e:
-        LOG.error(e)
-        sys.exit(2)
 
+def _inject_ini_options(args):
     # Handle .bandit files in projects to pass cmdline args from file
     ini_options = _get_options_from_ini(args.ini_path, args.targets)
     if ini_options:
@@ -330,6 +309,35 @@ def main():
         args.targets = _log_option_source(args.targets, ini_targets,
                                           'selected targets')
         # TODO(tmcpeak): any other useful options to pass from .bandit?
+
+
+def main():
+    # bring our logging stuff up as early as possible
+    debug = (logging.DEBUG if '-d' in sys.argv or '--debug' in sys.argv else
+             logging.INFO)
+    _init_logger(debug)
+    extension_mgr = _init_extensions()
+
+    baseline_formatters = [f.name for f in filter(lambda x:
+                                                  hasattr(x.plugin,
+                                                          '_accepts_baseline'),
+                                                  extension_mgr.formatters)]
+
+    # now do normal startup
+    # setup work - parse arguments, and initialize BanditManager
+    parser = _get_parser(extension_mgr)
+    args = parser.parse_args()
+    # Check if `--msg-template` is not present without custom formatter
+    if args.output_format != 'custom' and args.msg_template is not None:
+        parser.error("--msg-template can only be used with --format=custom")
+
+    try:
+        b_conf = b_config.BanditConfig(config_file=args.config_file)
+    except utils.ConfigError as e:
+        LOG.error(e)
+        sys.exit(2)
+
+    _inject_ini_options(args)
 
     if not args.targets:
         LOG.error("No targets found in CLI or ini files, exiting.")
