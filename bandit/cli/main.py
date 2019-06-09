@@ -311,45 +311,38 @@ def _inject_ini_options(args):
         # TODO(tmcpeak): any other useful options to pass from .bandit?
 
 
-def main():
-    # bring our logging stuff up as early as possible
-    debug = (logging.DEBUG if '-d' in sys.argv or '--debug' in sys.argv else
-             logging.INFO)
-    _init_logger(debug)
-    extension_mgr = _init_extensions()
-
-    baseline_formatters = [f.name for f in filter(lambda x:
-                                                  hasattr(x.plugin,
-                                                          '_accepts_baseline'),
-                                                  extension_mgr.formatters)]
-
-    # now do normal startup
-    # setup work - parse arguments, and initialize BanditManager
-    parser = _get_parser(extension_mgr)
-    args = parser.parse_args()
+def _check_args(args, parser):
     # Check if `--msg-template` is not present without custom formatter
     if args.output_format != 'custom' and args.msg_template is not None:
         parser.error("--msg-template can only be used with --format=custom")
 
+    if not args.targets:
+        LOG.error("No targets found in CLI or ini files, exiting.")
+        sys.exit(2)
+
+
+def get_bandit_conf(args):
     try:
         b_conf = b_config.BanditConfig(config_file=args.config_file)
     except utils.ConfigError as e:
         LOG.error(e)
         sys.exit(2)
-
-    _inject_ini_options(args)
-
-    if not args.targets:
-        LOG.error("No targets found in CLI or ini files, exiting.")
-        sys.exit(2)
     # if the log format string was set in the options, reinitialize
     if b_conf.get_option('log_format'):
         log_format = b_conf.get_option('log_format')
         _init_logger(log_level=logging.DEBUG, log_format=log_format)
+    return b_conf
 
-    if args.quiet:
-        _init_logger(log_level=logging.WARN)
 
+def get_args(extension_mgr):
+    parser = _get_parser(extension_mgr)
+    args = parser.parse_args()
+    _inject_ini_options(args)
+    _check_args(args, parser)
+    return args
+
+
+def get_profile(b_conf, args, extension_mgr):
     try:
         profile = _get_profile(b_conf, args.profile, args.config_file)
         _log_info(args, profile)
@@ -361,7 +354,10 @@ def main():
     except (utils.ProfileNotFound, ValueError) as e:
         LOG.error(e)
         sys.exit(2)
+    return profile
 
+
+def run_tests(b_conf, args, profile, baseline_formatters):
     b_mgr = b_manager.BanditManager(b_conf, args.agg_type, args.debug,
                                     profile=profile, verbose=args.verbose,
                                     quiet=args.quiet,
@@ -410,12 +406,36 @@ def main():
                          args.output_format,
                          args.msg_template)
 
-    # return an exit code of 1 if there are results, 0 otherwise
     if b_mgr.results_count(sev_filter=sev_level, conf_filter=conf_level) > 0:
-        sys.exit(1)
+        return False
     else:
-        sys.exit(0)
+        return True
 
+
+def main():
+    # bring our logging stuff up as early as possible
+    debug = (logging.DEBUG if '-d' in sys.argv or '--debug' in sys.argv else
+             logging.INFO)
+    _init_logger(debug)
+    extension_mgr = _init_extensions()
+
+    baseline_formatters = [f.name for f in filter(lambda x:
+                                                  hasattr(x.plugin,
+                                                          '_accepts_baseline'),
+                                                  extension_mgr.formatters)]
+
+    # now do normal startup
+    # setup work - parse arguments, and initialize BanditManager
+    args = get_args(extension_mgr)
+    b_conf = get_bandit_conf(args)
+
+    if args.quiet:
+        _init_logger(log_level=logging.WARN)
+
+    profile = get_profile(b_conf, args, extension_mgr)
+    has_errors = run_tests(b_conf, args, profile, baseline_formatters)
+    # return an exit code of 1 if there are errors, 0 otherwise
+    sys.exit(int(not has_errors))
 
 if __name__ == '__main__':
     main()
