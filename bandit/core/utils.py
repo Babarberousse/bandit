@@ -306,7 +306,22 @@ def parse_ini_file(f_loc):
     config = configparser.ConfigParser()
     try:
         config.read(f_loc)
-        return {k: v for k, v in config.items('bandit')}
+        bool_params = [
+            'recursive',
+            'verbose',
+            'debug',
+            'quiet',
+            'ignore-nosec',
+            'exit-zero'
+        ]
+        options = {k: v for k, v in config['bandit'].items()}
+        for bool_param in bool_params:
+            if config['bandit'].getboolean(bool_param) is not None:
+                options.update(
+                    {bool_param: config['bandit'].getboolean(bool_param)}
+                )
+
+        return options
 
     except (configparser.Error, KeyError, TypeError):
         LOG.debug("Config file %s not found or missing [bandit] "

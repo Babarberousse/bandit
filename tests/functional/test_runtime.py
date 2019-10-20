@@ -94,6 +94,24 @@ class RuntimeTests(testtools.TestCase):
         self.assertIn("Files skipped (0):", output)
         self.assertIn("No issues identified.", output)
 
+    def test_ini_file_override(self):
+        """Tests that ini file properly overrides default values"""
+        (retcode, output) = self._test_runtime(['bandit',
+                                                'examples/ini_file_test'])
+        self.assertEqual(0, retcode)
+        self.assertIn("Total lines of code: 2", output)
+        self.assertIn("Files skipped (0):", output)
+        self.assertIn("No issues identified.", output)
+
+    def test_cli_before_ini_file(self):
+        """Tests that ini file doesn't override cli args"""
+        (retcode, output) = self._test_runtime(['bandit', '-r',
+                                                'examples/ini_file_test'])
+        self.assertEqual(0, retcode)
+        self.assertIn("Total lines of code: 2", output)
+        self.assertIn("Files skipped (0):", output)
+        self.assertIn("No issues identified.", output)
+
     def test_example_nonsense(self):
         (retcode, output) = self._test_example(['bandit', ], ['nonsense.py', ])
         self.assertEqual(0, retcode)
